@@ -5,17 +5,18 @@ import { motion } from 'framer-motion';
 export default function FocusMode({ onClose }) {
   const [loading, setLoading] = useState(false);
   const [task, setTask] = useState(null);
+  const [error, setError] = useState(''); // New Error State
 
   const findTask = async () => {
     setLoading(true);
+    setError(''); // Clear previous errors
     try {
-      // Call the math endpoint we just wrote
      const baseUrl = `${window.location.protocol}//${window.location.hostname}:5000/api`;
      const res = await axios.post(`${baseUrl}/choose`); 
      
       if (!res.data) {
-        alert("No tasks found!");
-        onClose();
+        setError("No actionable tasks found! Add some to the map first.");
+        setLoading(false);
         return;
       }
       
@@ -26,7 +27,7 @@ export default function FocusMode({ onClose }) {
       }, 600);
       
     } catch (e) {
-      alert("Error calculating task.");
+      setError("Error calculating task. Check the server connection.");
       setLoading(false);
     }
   };
@@ -41,9 +42,17 @@ export default function FocusMode({ onClose }) {
         {!task ? (
           <>
             <h2 className="mb-2 text-3xl font-bold text-white">🎯 Focus</h2>
-            <p className="mb-8 text-gray-400">
-              Let the algorithm decide what is most important right now.
-            </p>
+            
+            {/* Conditional Error Display */}
+            {error ? (
+              <div className="mb-6 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
+                {error}
+              </div>
+            ) : (
+              <p className="mb-8 text-gray-400">
+                Let the algorithm decide what is most important right now.
+              </p>
+            )}
             
             <div className="flex justify-center gap-4">
               <button onClick={onClose} className="px-4 py-2 text-gray-500 hover:text-white">
@@ -52,7 +61,7 @@ export default function FocusMode({ onClose }) {
               <button 
                 onClick={findTask}
                 disabled={loading}
-                className="rounded-full bg-blue-600 px-8 py-3 font-bold text-white hover:bg-blue-500 transition-colors"
+                className="rounded-full bg-blue-600 px-8 py-3 font-bold text-white hover:bg-blue-500 transition-colors disabled:opacity-50"
               >
                 {loading ? 'Calculating...' : 'Spin the Wheel'}
               </button>

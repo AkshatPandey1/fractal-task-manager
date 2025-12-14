@@ -2,13 +2,14 @@ import React, { useEffect, useMemo, useState } from 'react';
 import ReactFlow, { Background, Controls, ReactFlowProvider } from 'reactflow';
 import 'reactflow/dist/style.css'; 
 import FocusMode from './components/FocusMode';
+import GlobalModal from './components/GlobalModal'; // <--- NEW IMPORT
 import useStore from './store/useStore';
 import MindMapNode from './components/MindMapNode';
-import TaskList from './components/TaskList'; // <--- Import the list
+import TaskList from './components/TaskList'; 
 
 const nodeTypes = { mindMap: MindMapNode };
 
-// --- Layout Logic (Same as before) ---
+// --- Layout Logic (Unchanged) ---
 const getLayoutedNodes = (nodes) => {
     if (nodes.length === 0) return [];
     const levels = {};
@@ -63,10 +64,13 @@ export default function App() {
 
   return (
     <div className="relative w-screen h-screen bg-[#171717]">
+      
+      {/* --- NEW: RENDER MODAL --- */}
+      <GlobalModal />
 
       {showFocus && <FocusMode onClose={() => setShowFocus(false)} />}
 
-      {/* NEW: Floating Dock Navigation */}
+      {/* Floating Dock Navigation */}
       <div className="fixed bottom-8 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-2xl border border-white/10 bg-white/5 p-2 backdrop-blur-xl shadow-2xl transition-all hover:scale-105 hover:bg-white/10">
 
         <button
@@ -102,7 +106,6 @@ export default function App() {
       </div>
 
       <ReactFlowProvider>
-        {/* ... keep your provider content same ... */}
         {view === 'map' ? <Flow /> : <div className="h-full overflow-y-auto pb-32"><TaskList /></div>}
       </ReactFlowProvider>
     </div>

@@ -1,20 +1,17 @@
 import React, { memo } from 'react';
 import { Handle, Position } from 'reactflow';
-import { CheckCircle2, Circle, Trash2, Edit3, Plus, AlertCircle } from 'lucide-react';
+import { CheckCircle2, Circle, Trash2, Edit3, Plus } from 'lucide-react';
 import useStore from '../store/useStore';
 
-// client/src/components/MindMapNode.jsx
-
-// ... imports remain the same
-
 const MindMapNode = ({ data }) => {
-  const { addChild, deleteNode, renameNode, toggleTask } = useStore();
+  // Destructure openModal
+  const { openModal, toggleTask } = useStore();
+  
   const isRoot = !data.parentId;
   const isCompleted = data.isCompleted;
 
   return (
     <div className="relative group">
-      {/* Handles remain the same... */}
       <Handle type="target" position={Position.Top} className="opacity-0" />
 
       <div 
@@ -41,8 +38,29 @@ const MindMapNode = ({ data }) => {
                 
                 {/* Actions (Only show on hover) */}
                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={(e) => { e.stopPropagation(); renameNode(data.id, data.label); }} className="text-gray-500 hover:text-white"><Edit3 size={14}/></button>
-                    {!isRoot && <button onClick={(e) => { e.stopPropagation(); deleteNode(data.id); }} className="text-gray-500 hover:text-red-400"><Trash2 size={14}/></button>}
+                    {/* RENAME BUTTON */}
+                    <button 
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        openModal('rename', data.id, data.label); 
+                      }} 
+                      className="text-gray-500 hover:text-white"
+                    >
+                      <Edit3 size={14}/>
+                    </button>
+
+                    {/* DELETE BUTTON */}
+                    {!isRoot && (
+                      <button 
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          openModal('delete', data.id); 
+                        }} 
+                        className="text-gray-500 hover:text-red-400"
+                      >
+                        <Trash2 size={14}/>
+                      </button>
+                    )}
                 </div>
             </div>
 
@@ -61,9 +79,12 @@ const MindMapNode = ({ data }) => {
         </div>
       </div>
 
-      {/* Floating Add Button (Centered at bottom) */}
+      {/* ADD CHILD BUTTON */}
       <button 
-        onClick={(e) => { e.stopPropagation(); addChild(data.id); }}
+        onClick={(e) => { 
+          e.stopPropagation(); 
+          openModal('add', data.id); 
+        }}
         className="
             absolute -bottom-4 left-1/2 -translate-x-1/2 z-20 
             flex h-8 w-8 items-center justify-center rounded-full 

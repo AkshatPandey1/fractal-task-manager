@@ -9,6 +9,15 @@ const useStore = create((set, get) => ({
   edges: [],
   leaves: [],
 
+  // --- NEW: UI STATE for Modals ---
+  modalState: { type: null, nodeId: null, initialValue: '' },
+
+  openModal: (type, nodeId, initialValue = '') => 
+    set({ modalState: { type, nodeId, initialValue } }),
+
+  closeModal: () => 
+    set({ modalState: { type: null, nodeId: null, initialValue: '' } }),
+
   // --- FETCHERS ---
   fetchTree: async () => {
     try {
@@ -18,13 +27,12 @@ const useStore = create((set, get) => ({
       const flowNodes = data.map((node) => ({
         id: node.id.toString(),
         type: 'mindMap',
-        position: { x: 0, y: 0 },
+        position: { x: 0, y: 0 }, // Layout will handle this
         data: { 
           label: node.title, 
           priority: node.priority,
           isCompleted: node.is_completed,
           id: node.id,
-          // CRITICAL: We need this to know if we can delete it
           parentId: node.parent_id 
         },
         parentNode: node.parent_id ? node.parent_id.toString() : undefined,
@@ -56,8 +64,8 @@ const useStore = create((set, get) => ({
 
   // --- ACTIONS ---
 
-  addChild: async (parentId) => {
-    const title = prompt("Enter sub-task name:");
+  // REFACTORED: Now accepts title directly (no prompt)
+  addChild: async (parentId, title) => {
     if (!title) return;
     try {
       await axios.post(`${SERVER_URL}/nodes`, { title, parent_id: parentId, priority: 1 });
@@ -65,22 +73,22 @@ const useStore = create((set, get) => ({
     } catch (error) { console.error(error); }
   },
 
+  // REFACTORED: No confirm dialog here anymore
   deleteNode: async (id) => {
-    if (!confirm("Are you sure? This will delete all sub-tasks too.")) return;
     // Optimistic delete
     set({ nodes: get().nodes.filter(n => n.id !== id.toString()) });
     try {
       await axios.delete(`${SERVER_URL}/nodes/${id}`);
-      get().fetchTree(); // Refresh to be safe
+      get().fetchTree(); 
     } catch (error) { 
         console.error(error); 
         get().fetchTree(); // Revert if failed
     }
   },
 
-  renameNode: async (id, oldTitle) => {
-    const newTitle = prompt("Rename task:", oldTitle);
-    if (!newTitle || newTitle === oldTitle) return;
+  // REFACTORED: Now accepts newTitle directly (no prompt)
+  renameNode: async (id, newTitle) => {
+    if (!newTitle) return;
     try {
         await axios.patch(`${SERVER_URL}/nodes/${id}`, { title: newTitle });
         get().fetchTree();
@@ -88,7 +96,6 @@ const useStore = create((set, get) => ({
   },
 
   toggleTask: async (id, currentStatus) => {
-    // 1. Optimistic Update
     const newStatus = !currentStatus;
     
     // Update Map View immediately
@@ -100,7 +107,7 @@ const useStore = create((set, get) => ({
 
     try {
       await axios.patch(`${SERVER_URL}/nodes/${id}`, { is_completed: newStatus });
-      get().fetchTree(); // DB logic handles the parent updates, so we must refresh
+      get().fetchTree();
       get().fetchLeaves();
     } catch (error) {
       console.error("Failed to toggle:", error);
