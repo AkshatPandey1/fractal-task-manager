@@ -1,0 +1,10 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Optional: Make the background dark by default to match your theme */
+body {
+    background-color: #171717; /* neutral-900 */
+    margin: 0;
+    overflow: hidden; /* Prevent scrollbars on the map */
+}

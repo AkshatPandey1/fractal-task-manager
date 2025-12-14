@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# OS Junk
+.DS_Store
+*.log
+
+# Docker Volumes (if you mapped them locally)
+postgres_data/
+pgdata/
