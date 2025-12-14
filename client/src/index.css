@@ -1,10 +1,32 @@
+/* client/src/index.css */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Optional: Make the background dark by default to match your theme */
 body {
-    background-color: #171717; /* neutral-900 */
-    margin: 0;
-    overflow: hidden; /* Prevent scrollbars on the map */
+  /* Dark "space" background with a subtle gradient */
+  background: radial-gradient(circle at 50% -20%, #2a2a2a, #171717 60%, #000000);
+  color: #fff;
+  font-family: 'Inter', sans-serif;
+  margin: 0;
+  overflow: hidden;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
 }

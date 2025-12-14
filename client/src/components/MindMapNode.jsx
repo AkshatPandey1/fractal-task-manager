@@ -3,135 +3,80 @@ import { Handle, Position } from 'reactflow';
 import { CheckCircle2, Circle, Trash2, Edit3, Plus, AlertCircle } from 'lucide-react';
 import useStore from '../store/useStore';
 
+// client/src/components/MindMapNode.jsx
+
+// ... imports remain the same
+
 const MindMapNode = ({ data }) => {
   const { addChild, deleteNode, renameNode, toggleTask } = useStore();
-
-  // If parentId is null, it's the Base Node (Root)
   const isRoot = !data.parentId;
   const isCompleted = data.isCompleted;
 
-  // Dynamic Styles based on state
-  const containerStyle = isCompleted
-    ? 'border-emerald-500/50 bg-emerald-950/40 shadow-[0_0_20px_-5px_rgba(16,185,129,0.3)]'
-    : 'border-slate-700 bg-slate-900/90 shadow-[0_10px_30px_-10px_rgba(0,0,0,0.5)] hover:border-blue-500/50 hover:shadow-[0_0_25px_-5px_rgba(59,130,246,0.4)]';
-
-  const titleStyle = isCompleted
-    ? 'text-emerald-400/70 line-through decoration-emerald-500/50'
-    : 'text-slate-100';
-
   return (
     <div className="relative group">
-      
-      {/* Incoming Handle (Hidden visually but functional) */}
-      <Handle 
-        type="target" 
-        position={Position.Top} 
-        className="!w-3 !h-3 !bg-slate-600 !border-2 !border-slate-900 transition-colors hover:!bg-blue-500" 
-      />
+      {/* Handles remain the same... */}
+      <Handle type="target" position={Position.Top} className="opacity-0" />
 
-      {/* --- NODE CARD --- */}
       <div 
         className={`
-          relative min-w-[200px] max-w-[300px] rounded-2xl border backdrop-blur-xl 
-          p-4 transition-all duration-300 ease-out 
-          ${containerStyle}
+          relative min-w-[240px] overflow-hidden rounded-2xl border 
+          backdrop-blur-2xl transition-all duration-300
+          ${isCompleted 
+            ? 'border-emerald-500/20 bg-emerald-950/20 opacity-60 grayscale-[0.5]' 
+            : 'border-white/10 bg-[#1A1A1A]/80 shadow-2xl hover:border-blue-500/50 hover:shadow-blue-500/10'
+          }
         `}
       >
-        
-        {/* TOP ROW: Priority & Actions */}
-        <div className="flex items-start justify-between mb-3">
-            
-            {/* Priority / Status Badge */}
-            <div 
-              className={`
-                flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border transition-colors
-                ${isCompleted 
-                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
-                  : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                }
-              `}
-            >
-              {isCompleted ? (
-                <> <CheckCircle2 size={12} /> <span>Done</span> </>
-              ) : (
-                <> <AlertCircle size={12} /> <span>Priority {data.priority || 'Low'}</span> </>
-              )}
+        {/* Decorative Top Gradient Line */}
+        {!isCompleted && <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 opacity-80" />}
+
+        <div className="p-5">
+            {/* Header: Priority Badge & Actions */}
+            <div className="flex justify-between items-start mb-4">
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-widest uppercase ${
+                    isCompleted ? 'bg-emerald-500/10 text-emerald-500' : 'bg-white/5 text-gray-400'
+                }`}>
+                    {isCompleted ? 'Done' : `Priority ${data.priority || 0}`}
+                </span>
+                
+                {/* Actions (Only show on hover) */}
+                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={(e) => { e.stopPropagation(); renameNode(data.id, data.label); }} className="text-gray-500 hover:text-white"><Edit3 size={14}/></button>
+                    {!isRoot && <button onClick={(e) => { e.stopPropagation(); deleteNode(data.id); }} className="text-gray-500 hover:text-red-400"><Trash2 size={14}/></button>}
+                </div>
             </div>
 
-            {/* ACTION BUTTONS (Reveal on Hover) */}
-            <div className={`flex items-center gap-1 transition-all duration-200 ${isRoot ? 'opacity-0 group-hover:opacity-100' : 'opacity-0 group-hover:opacity-100 translate-x-2 group-hover:translate-x-0'}`}>
-                {/* Rename */}
+            {/* Content */}
+            <div className="flex items-start gap-4">
                 <button 
-                  onClick={(e) => { e.stopPropagation(); renameNode(data.id, data.label); }}
-                  className="p-1.5 rounded-md text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
-                  title="Rename"
+                    onClick={(e) => { e.stopPropagation(); toggleTask(data.id, isCompleted); }}
+                    className={`mt-1 rounded-full p-1 transition-colors ${isCompleted ? 'text-emerald-500' : 'text-gray-600 hover:text-blue-400'}`}
                 >
-                  <Edit3 size={14} />
+                    {isCompleted ? <CheckCircle2 size={24} /> : <Circle size={24} />}
                 </button>
-
-                {/* Delete (Hidden for Root) */}
-                {!isRoot && (
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); deleteNode(data.id); }}
-                    className="p-1.5 rounded-md text-slate-400 hover:bg-red-500/20 hover:text-red-400 transition-colors"
-                    title="Delete"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                )}
+                <div className={`text-base font-medium leading-relaxed ${isCompleted ? 'line-through text-gray-500' : 'text-gray-100'}`}>
+                    {data.label}
+                </div>
             </div>
         </div>
-
-        {/* MAIN CONTENT: Checkbox & Label */}
-        <div className="flex items-start gap-3">
-           <button
-             onClick={(e) => {
-                e.stopPropagation();
-                toggleTask(data.id, isCompleted);
-             }}
-             className={`
-                mt-0.5 flex-shrink-0 transition-transform active:scale-90
-                ${isCompleted ? 'text-emerald-500' : 'text-slate-500 hover:text-blue-500'}
-             `}
-           >
-              {isCompleted ? <CheckCircle2 size={22} className="fill-emerald-500/20" /> : <Circle size={22} />}
-           </button>
-
-           <div className={`text-sm font-medium leading-tight break-words transition-colors duration-300 ${titleStyle}`}>
-              {data.label}
-           </div>
-        </div>
       </div>
 
-      {/* --- ADD CHILD BUTTON (Floating at bottom) --- */}
-      <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 z-10 overflow-hidden pt-2"> 
-        <button 
-          onClick={(e) => {
-            e.stopPropagation();
-            addChild(data.id);
-          }}
-          className="
-            flex items-center justify-center w-8 h-8 rounded-full 
-            bg-slate-800 border border-slate-700 text-slate-400 
-            shadow-lg shadow-black/50
-            transition-all duration-200 
-            translate-y-8 opacity-0 group-hover:translate-y-0 group-hover:opacity-100
-            hover:bg-blue-600 hover:border-blue-500 hover:text-white hover:scale-110
-          "
-          title="Add Subtask"
-        >
-          <Plus size={18} />
-        </button>
-      </div>
+      {/* Floating Add Button (Centered at bottom) */}
+      <button 
+        onClick={(e) => { e.stopPropagation(); addChild(data.id); }}
+        className="
+            absolute -bottom-4 left-1/2 -translate-x-1/2 z-20 
+            flex h-8 w-8 items-center justify-center rounded-full 
+            bg-blue-600 text-white shadow-lg shadow-blue-600/40
+            transition-all hover:scale-110 active:scale-95
+            opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0
+        "
+      >
+        <Plus size={16} strokeWidth={3} />
+      </button>
 
-      {/* Outgoing Handle */}
-      <Handle 
-        type="source" 
-        position={Position.Bottom} 
-        className="!w-3 !h-3 !bg-slate-600 !border-2 !border-slate-900 transition-colors hover:!bg-blue-500" 
-      />
+      <Handle type="source" position={Position.Bottom} className="opacity-0" />
     </div>
   );
 };
-
 export default memo(MindMapNode);

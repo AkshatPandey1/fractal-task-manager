@@ -59,42 +59,51 @@ function Flow() {
 
 export default function App() {
   const [view, setView] = useState('map');
-  const [showFocus, setShowFocus] = useState(false); // <--- State
+  const [showFocus, setShowFocus] = useState(false);
 
   return (
-    <div style={{ width: '100vw', height: '100vh', backgroundColor: '#171717', position: 'relative' }}>
+    <div className="relative w-screen h-screen bg-[#171717]">
 
-      {/* 1. THE POPUP WINDOW */}
       {showFocus && <FocusMode onClose={() => setShowFocus(false)} />}
 
-      {/* 2. THE TOP BAR */}
-      <div className="absolute top-5 right-5 z-50 flex gap-2 rounded-lg bg-black/50 p-1 backdrop-blur-md border border-white/10">
+      {/* NEW: Floating Dock Navigation */}
+      <div className="fixed bottom-8 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-2xl border border-white/10 bg-white/5 p-2 backdrop-blur-xl shadow-2xl transition-all hover:scale-105 hover:bg-white/10">
 
-        {/* THE NEW BUTTON */}
         <button
-            onClick={() => setShowFocus(true)}
-            className="px-4 py-2 text-sm font-bold rounded-md bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg hover:brightness-110"
+          onClick={() => setView('map')}
+          className={`rounded-xl px-6 py-3 text-sm font-semibold transition-all ${
+            view === 'map'
+            ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30'
+            : 'text-gray-400 hover:bg-white/5 hover:text-white'
+          }`}
         >
-            🎯 Focus
+          Mind Map
         </button>
 
-        {/* Existing Buttons */}
         <button
-            onClick={() => setView('map')}
-            className={`px-4 py-2 text-sm font-bold rounded-md transition-colors ${view === 'map' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}
+          onClick={() => setView('list')}
+          className={`rounded-xl px-6 py-3 text-sm font-semibold transition-all ${
+            view === 'list'
+            ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30'
+            : 'text-gray-400 hover:bg-white/5 hover:text-white'
+          }`}
         >
-            Map
+          Task List
         </button>
+
+        <div className="mx-2 h-6 w-px bg-white/10"></div>
+
         <button
-            onClick={() => setView('list')}
-            className={`px-4 py-2 text-sm font-bold rounded-md transition-colors ${view === 'list' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}
+          onClick={() => setShowFocus(true)}
+          className="group relative flex items-center gap-2 rounded-xl bg-gradient-to-tr from-emerald-500 to-green-400 px-6 py-3 text-sm font-bold text-black shadow-lg shadow-emerald-500/20 transition-all hover:brightness-110"
         >
-            List
+           <span>Focus Mode</span>
         </button>
       </div>
 
       <ReactFlowProvider>
-        {view === 'map' ? <Flow /> : <div className="h-full overflow-y-auto"><TaskList /></div>}
+        {/* ... keep your provider content same ... */}
+        {view === 'map' ? <Flow /> : <div className="h-full overflow-y-auto pb-32"><TaskList /></div>}
       </ReactFlowProvider>
     </div>
   );
