@@ -1,8 +1,7 @@
-// client/src/store/useStore.js
 import { create } from 'zustand';
 import axios from 'axios';
-import { applyNodeChanges, applyEdgeChanges, getIncomers, getOutgoers } from 'reactflow';
-import dagre from '@dagrejs/dagre'; // <--- IMPORT DAGRE
+import { applyNodeChanges, applyEdgeChanges } from 'reactflow';
+import dagre from '@dagrejs/dagre'; 
 
 const SERVER_URL = `${window.location.protocol}//${window.location.hostname}:5000/api`;
 
@@ -10,8 +9,8 @@ const SERVER_URL = `${window.location.protocol}//${window.location.hostname}:500
 const dagreGraph = new dagre.graphlib.Graph();
 dagreGraph.setDefaultEdgeLabel(() => ({}));
 
-const nodeWidth = 280; // Width of your MindMapNode
-const nodeHeight = 140; // Approx height
+const nodeWidth = 280; 
+const nodeHeight = 140; 
 
 const getLayoutedElements = (nodes, edges, direction = 'TB') => {
   dagreGraph.setGraph({ rankdir: direction });
@@ -47,16 +46,19 @@ const useStore = create((set, get) => ({
   nodes: [],
   edges: [],
   leaves: [],
-  modalState: { type: null, nodeId: null, initialValue: '' },
+  modalState: { type: null, nodeId: null, initialValue: '', initialPriority: 1 },
 
   // UI STATE
-  focusedNodeId: null, // The node we are currently focusing on
+  focusedNodeId: null, 
 
-  openModal: (type, nodeId, initialValue = '') => 
-    set({ modalState: { type, nodeId, initialValue } }),
+  // --- MODAL ACTIONS ---
+  openModal: (type, nodeId, initialValue = '', initialPriority = 1) => 
+    set({ modalState: { type, nodeId, initialValue, initialPriority } }),
+
   closeModal: () => 
-    set({ modalState: { type: null, nodeId: null, initialValue: '' } }),
+    set({ modalState: { type: null, nodeId: null, initialValue: '', initialPriority: 1 } }),
 
+  // --- DATA FETCHING ---
   fetchTree: async () => {
     try {
       const response = await axios.get(`${SERVER_URL}/nodes`);
@@ -65,7 +67,6 @@ const useStore = create((set, get) => ({
       const flowNodes = data.map((node) => ({
         id: node.id.toString(),
         type: 'mindMap',
-        // We initially set hidden: false. We'll control visibility dynamically.
         hidden: false, 
         data: { 
           label: node.title, 
@@ -73,7 +74,6 @@ const useStore = create((set, get) => ({
           isCompleted: node.is_completed,
           id: node.id,
           parentId: node.parent_id,
-          // Add a helper to toggle focus
           onFocus: () => get().setFocus(node.id.toString())
         },
         position: { x: 0, y: 0 }, 
@@ -94,28 +94,110 @@ const useStore = create((set, get) => ({
       const layout = getLayoutedElements(flowNodes, flowEdges);
       set({ nodes: layout.nodes, edges: layout.edges });
       
+      // If we are currently focused on a node, re-apply the focus filter
+      if (get().focusedNodeId) {
+        get().setFocus(get().focusedNodeId);
+      }
+      
     } catch (error) {
       console.error("Failed to fetch tree:", error);
     }
   },
 
-  // --- NEW: FOCUS & COLLAPSE LOGIC ---
+  fetchLeaves: async () => {
+    try {
+      const response = await axios.get(`${SERVER_URL}/leaves`);
+      set({ leaves: response.data });
+    } catch (error) { console.error(error); }
+  },
+
+  // --- NODE ACTIONS ---
+
+  addChild: async (parentId, title, priority) => {
+    if (!title) return;
+    try {
+      await axios.post(`${SERVER_URL}/nodes`, { 
+        title, 
+        parent_id: parentId, 
+        priority: parseInt(priority) || 1 
+      });
+      get().fetchTree();
+      get().fetchLeaves();
+    } catch (error) { console.error(error); }
+  },
+
+  deleteNode: async (id) => {
+    // Optimistic delete
+    set({ nodes: get().nodes.filter(n => n.id !== id.toString()) });
+    try {
+      await axios.delete(`${SERVER_URL}/nodes/${id}`);
+      get().fetchTree(); 
+      get().fetchLeaves();
+    } catch (error) { 
+        console.error(error); 
+        get().fetchTree(); // Revert if failed
+    }
+  },
+
+  // Updated to support Title AND Priority
+  updateNode: async (id, title, priority) => {
+    if (!title) return;
+    try {
+        await axios.patch(`${SERVER_URL}/nodes/${id}`, { 
+            title: title, 
+            priority: parseInt(priority) 
+        });
+        get().fetchTree();
+        get().fetchLeaves();
+    } catch (error) { console.error(error); }
+  },
+
+  toggleTask: async (id, currentStatus) => {
+    const newStatus = !currentStatus;
+    
+    // Update Map View immediately (Optimistic)
+    set(state => ({
+        nodes: state.nodes.map(n => 
+            n.data.id === id ? { ...n, data: { ...n.data, isCompleted: newStatus } } : n
+        )
+    }));
+
+    try {
+      await axios.patch(`${SERVER_URL}/nodes/${id}`, { is_completed: newStatus });
+      get().fetchTree();
+      get().fetchLeaves();
+    } catch (error) {
+      console.error("Failed to toggle:", error);
+      get().fetchTree();
+    }
+  },
+
+  // --- VISUALIZATION LOGIC ---
+
   setFocus: (nodeId) => {
     const { nodes, edges } = get();
     
-    // 1. If clicking the same node, un-focus (show all)
+    // Toggle Off if clicking the same node
     if (get().focusedNodeId === nodeId) {
       set({ 
         focusedNodeId: null, 
-        nodes: nodes.map(n => ({ ...n, hidden: false, style: { opacity: 1 } })),
-        edges: edges.map(e => ({ ...e, hidden: false, style: { ...e.style, stroke: '#555', opacity: 1 } }))
+        nodes: nodes.map(n => ({ 
+            ...n, 
+            hidden: false, 
+            style: { ...n.style, opacity: 1, pointerEvents: 'all' } 
+        })),
+        edges: edges.map(e => ({ 
+            ...e, 
+            hidden: false, 
+            style: { ...e.style, stroke: '#555', opacity: 1 } 
+        }))
       });
       return;
     }
 
     set({ focusedNodeId: nodeId });
 
-    // 2. Traversal Helper: Find all relatives (Ancestors + Descendants)
+    // Find relatives (Ancestors + Descendants)
     const relatives = new Set();
     const visited = new Set();
     
@@ -136,45 +218,36 @@ const useStore = create((set, get) => ({
 
     traverse(nodeId, 'both');
 
-    // 3. Update Nodes: Dim/Hide others, Highlight path
+    // Update Nodes: Dim non-relatives
     const updatedNodes = nodes.map(node => {
         const isRelative = relatives.has(node.id);
         return {
             ...node,
-            // Option A: Hide completely (Collapsing behavior)
-            // hidden: !isRelative, 
-            
-            // Option B: Dim non-relatives (Focus behavior) - BETTER UI
             style: { 
+                ...node.style,
                 opacity: isRelative ? 1 : 0.1,
                 pointerEvents: isRelative ? 'all' : 'none' 
             },
         };
     });
 
-    // 4. Update Edges: Highlight the path
+    // Update Edges: Highlight path
     const updatedEdges = edges.map(edge => {
         const isPath = relatives.has(edge.source) && relatives.has(edge.target);
         return {
             ...edge,
             style: { 
-                stroke: isPath ? '#3b82f6' : '#333', // Blue if active, dark if not
+                stroke: isPath ? '#3b82f6' : '#333',
                 strokeWidth: isPath ? 3 : 1,
                 opacity: isPath ? 1 : 0.1
             },
-            // hidden: !isPath // Uncomment if using Option A (Hide)
+            zIndex: isPath ? 10 : 0
         };
     });
 
     set({ nodes: updatedNodes, edges: updatedEdges });
   },
 
-  // --- EXISTING ACTIONS (Keep these) ---
-  fetchLeaves: async () => { /* ... existing code ... */ },
-  addChild: async (parentId, title) => { /* ... existing code ... */ },
-  deleteNode: async (id) => { /* ... existing code ... */ },
-  renameNode: async (id, newTitle) => { /* ... existing code ... */ },
-  toggleTask: async (id, currentStatus) => { /* ... existing code ... */ },
   onNodesChange: (changes) => set({ nodes: applyNodeChanges(changes, get().nodes) }),
   onEdgesChange: (changes) => set({ edges: applyEdgeChanges(changes, get().edges) }),
 }));
