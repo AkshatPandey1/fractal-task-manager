@@ -3,6 +3,7 @@ import { Handle, Position } from 'reactflow';
 import { CheckCircle2, Circle, Trash2, Edit3, Plus, ChevronDown } from 'lucide-react';
 import useStore from '../store/useStore';
 import confetti from 'canvas-confetti';
+import { motion } from 'framer-motion';
 
 const MindMapNode = ({ data }) => {
   const { openModal, toggleTask, toggleFold, highlightPath, setHoistedNode } = useStore();
@@ -27,7 +28,10 @@ const MindMapNode = ({ data }) => {
   }, [isCompleted, hasChildren]);
 
   return (
-    <div 
+    <motion.div 
+        initial={{ opacity: 0, scale: 0.5 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.3, ease: "backOut" }}
         className="relative group"
         onMouseEnter={() => highlightPath(data.id.toString())}
         onMouseLeave={() => highlightPath(null)}
@@ -163,7 +167,7 @@ const MindMapNode = ({ data }) => {
       </button>
 
       <Handle type="source" position={Position.Bottom} className="opacity-0" />
-    </div>
+    </motion.div>
   );
 };
 export default memo(MindMapNode);
