@@ -114,7 +114,7 @@ app.post('/api/choose', async (req, res) => {
       const created = new Date(task.created_at);
       const now = new Date();
       const ageInDays = (now - created) / (1000 * 60 * 60 * 24);
-      const score = (task.priority * 100) + (ageInDays * 2) + (Math.random() * 5);
+      const score = (task.priority * 10) + (ageInDays * 2) + (Math.random() * 5);
       return { ...task, score };
     });
 
