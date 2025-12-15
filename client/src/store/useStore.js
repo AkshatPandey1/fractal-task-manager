@@ -26,7 +26,6 @@ const getLayoutedElements = (nodes, edges, direction = 'TB') => {
 
   const layoutedNodes = nodes.map((node) => {
     const nodeWithPosition = dagreGraph.node(node.id);
-    // Fallback if dagre fails to position (orphan nodes)
     if (!nodeWithPosition) return node;
 
     return {
@@ -43,38 +42,127 @@ const getLayoutedElements = (nodes, edges, direction = 'TB') => {
   return { nodes: layoutedNodes, edges };
 };
 
+// --- FRACTAL PROGRESS CALCULATOR ---
+const calculateFractalProgress = (rawNodes) => {
+    const nodeMap = new Map();
+    rawNodes.forEach(n => nodeMap.set(n.id, { ...n, children: [] }));
+    
+    rawNodes.forEach(n => {
+        if (n.parent_id && nodeMap.has(n.parent_id)) {
+            nodeMap.get(n.parent_id).children.push(nodeMap.get(n.id));
+        }
+    });
+
+    const progressMap = new Map();
+
+    const getProgress = (node) => {
+        if (node.children.length === 0) {
+            return node.is_completed ? 100 : 0;
+        }
+        let total = 0;
+        node.children.forEach(child => {
+            total += getProgress(child);
+        });
+        const result = total / node.children.length;
+        progressMap.set(node.id, result);
+        return result;
+    };
+
+    rawNodes.forEach(n => {
+        if (!progressMap.has(n.id)) getProgress(nodeMap.get(n.id));
+    });
+
+    return progressMap;
+};
+
 // --- STORE ---
 
 const useStore = create((set, get) => ({
   nodes: [],
   edges: [],
-  rawNodes: [], // Keep full dataset in memory
+  rawNodes: [], 
   leaves: [],
+  progressMap: new Map(),
+
   modalState: { type: null, nodeId: null, initialValue: '', initialPriority: 1 },
   
-  // FOLDING STATE
-  foldedIds: new Set(), // IDs of nodes that are collapsed
-
-  // HIGHLIGHT STATE
+  // STATE
+  foldedIds: new Set(),
   hoveredNodeId: null, 
+  hoistedNodeId: null, 
+  focusedNodeId: null, 
 
-  // --- MODAL ACTIONS ---
+  // --- ACTIONS ---
   openModal: (type, nodeId, initialValue = '', initialPriority = 1) => 
     set({ modalState: { type, nodeId, initialValue, initialPriority } }),
 
   closeModal: () => 
     set({ modalState: { type: null, nodeId: null, initialValue: '', initialPriority: 1 } }),
 
+  setHoistedNode: (id) => {
+    set({ hoistedNodeId: id });
+    get().computeLayout();
+  },
+
+  setFocus: (id) => {
+     set({ focusedNodeId: id });
+  },
+
+  moveFocus: (direction) => {
+    const { focusedNodeId, rawNodes } = get();
+    if (!focusedNodeId) {
+        if (rawNodes.length > 0) set({ focusedNodeId: rawNodes[0].id.toString() });
+        return;
+    }
+
+    const current = rawNodes.find(n => n.id.toString() === focusedNodeId);
+    if (!current) return;
+
+    let nextId = null;
+
+    if (direction === 'UP') {
+        if (current.parent_id) nextId = current.parent_id.toString();
+    } 
+    else if (direction === 'DOWN') {
+        const children = rawNodes.filter(n => n.parent_id === current.id).sort((a,b) => a.id - b.id);
+        if (children.length > 0) nextId = children[0].id.toString();
+    }
+    else if (direction === 'LEFT' || direction === 'RIGHT') {
+        const siblings = rawNodes.filter(n => n.parent_id === current.parent_id).sort((a,b) => a.id - b.id);
+        const idx = siblings.findIndex(n => n.id === current.id);
+        
+        if (direction === 'LEFT' && idx > 0) nextId = siblings[idx - 1].id.toString();
+        if (direction === 'RIGHT' && idx < siblings.length - 1) nextId = siblings[idx + 1].id.toString();
+    }
+
+    if (nextId) {
+        set({ focusedNodeId: nextId });
+    }
+  },
+
   // --- DATA FETCHING ---
   fetchTree: async () => {
     try {
       const response = await axios.get(`${SERVER_URL}/nodes`);
       const data = response.data;
-      
-      // Initialize foldedIds: All nodes are folded by default
-      const initialFolded = new Set(data.map(n => n.id.toString()));
+      const progress = calculateFractalProgress(data);
 
-      set({ rawNodes: data, foldedIds: initialFolded });
+      // FIX: Only initialize foldedIds if it's currently empty (first load).
+      // Otherwise, keep the user's current folding state.
+      const currentFolded = get().foldedIds;
+      let newFolded = currentFolded;
+      
+      if (currentFolded.size === 0 && data.length > 0) {
+          // Initial state: Fold everything
+          newFolded = new Set(data.map(n => n.id.toString()));
+      }
+
+      set({ rawNodes: data, foldedIds: newFolded, progressMap: progress });
+      
+      if (!get().focusedNodeId && data.length > 0) {
+         set({ focusedNodeId: data[0].id.toString() });
+      }
+
       get().computeLayout();
       
     } catch (error) {
@@ -89,27 +177,42 @@ const useStore = create((set, get) => ({
     } catch (error) { console.error(error); }
   },
 
-  // --- LAYOUT & VISIBILITY LOGIC ---
+  // --- LAYOUT ENGINE ---
   computeLayout: () => {
-    const { rawNodes, foldedIds, hoveredNodeId } = get();
+    const { rawNodes, foldedIds, hoveredNodeId, hoistedNodeId, progressMap, focusedNodeId } = get();
 
-    // 1. Build Hierarchy Map
+    let relevantNodes = rawNodes;
+    if (hoistedNodeId) {
+        const descendants = new Set();
+        const queue = [hoistedNodeId];
+        while(queue.length > 0) {
+            const currentId = queue.shift();
+            descendants.add(currentId);
+            rawNodes.filter(n => n.parent_id == currentId).forEach(child => queue.push(child.id));
+        }
+        relevantNodes = rawNodes.filter(n => descendants.has(n.id));
+    }
+
     const nodeMap = new Map();
-    rawNodes.forEach(n => nodeMap.set(n.id.toString(), { ...n, children: [] }));
+    relevantNodes.forEach(n => nodeMap.set(n.id.toString(), { ...n, children: [] }));
     
     const roots = [];
-    rawNodes.forEach(n => {
+    relevantNodes.forEach(n => {
         const strId = n.id.toString();
         const node = nodeMap.get(strId);
-        if (n.parent_id) {
+        
+        if (n.id == hoistedNodeId) {
+            roots.push(node);
+        }
+        else if (n.parent_id && nodeMap.has(n.parent_id.toString())) {
             const parent = nodeMap.get(n.parent_id.toString());
-            if (parent) parent.children.push(node);
-        } else {
+            parent.children.push(node);
+        } 
+        else if (!n.parent_id) {
             roots.push(node);
         }
     });
 
-    // 2. Determine Visibility (BFS)
     const visibleNodes = [];
     const visibleEdges = [];
     const queue = [...roots];
@@ -118,7 +221,6 @@ const useStore = create((set, get) => ({
         const node = queue.shift();
         const strId = node.id.toString();
 
-        // Construct ReactFlow Node
         visibleNodes.push({
             id: strId,
             type: 'mindMap',
@@ -128,15 +230,15 @@ const useStore = create((set, get) => ({
               isCompleted: node.is_completed,
               id: node.id,
               parentId: node.parent_id,
-              // Pass folding state to component
               isFolded: foldedIds.has(strId),
-              hasChildren: node.children.length > 0
+              hasChildren: node.children.length > 0,
+              progress: progressMap.get(node.id) || 0,
+              isFocused: strId === focusedNodeId 
             },
             position: { x: 0, y: 0 }, 
         });
 
-        // Add Edges connecting to parent
-        if (node.parent_id) {
+        if (node.parent_id && node.id != hoistedNodeId) {
              visibleEdges.push({
                 id: `e${node.parent_id}-${node.id}`,
                 source: node.parent_id.toString(),
@@ -146,35 +248,29 @@ const useStore = create((set, get) => ({
              });
         }
 
-        // If NOT folded, add children to queue to be processed
         if (!foldedIds.has(strId)) {
             queue.push(...node.children);
         }
     }
 
-    // 3. Calculate Layout
     const layout = getLayoutedElements(visibleNodes, visibleEdges);
 
-    // 4. Apply Highlights (Hover Path)
     let finalNodes = layout.nodes;
     let finalEdges = layout.edges;
 
     if (hoveredNodeId) {
-        // Trace ancestors
         const ancestors = new Set();
-        let curr = nodeMap.get(hoveredNodeId);
+        let curr = rawNodes.find(n => n.id.toString() === hoveredNodeId);
         while (curr) {
             ancestors.add(curr.id.toString());
-            curr = curr.parent_id ? nodeMap.get(curr.parent_id.toString()) : null;
+            curr = rawNodes.find(n => n.id === curr.parent_id);
         }
 
-        // Apply Styles
         finalNodes = finalNodes.map(node => ({
             ...node,
             style: {
                 ...node.style,
-                opacity: ancestors.has(node.id) ? 1 : 0.3, // Dim others
-                // Border highlight removed as requested
+                opacity: ancestors.has(node.id) ? 1 : 0.3,
             }
         }));
 
@@ -187,10 +283,6 @@ const useStore = create((set, get) => ({
             },
             zIndex: ancestors.has(edge.source) && ancestors.has(edge.target) ? 10 : 0
         }));
-    } else {
-        // Reset styles when no hover
-        finalNodes = finalNodes.map(n => ({ ...n, style: { opacity: 1 } }));
-        finalEdges = finalEdges.map(e => ({ ...e, style: { stroke: '#555', opacity: 1 } }));
     }
 
     set({ nodes: finalNodes, edges: finalEdges });
@@ -202,13 +294,8 @@ const useStore = create((set, get) => ({
     const { foldedIds } = get();
     const strId = nodeId.toString();
     const newFolded = new Set(foldedIds);
-    
-    if (newFolded.has(strId)) {
-        newFolded.delete(strId); // Expand
-    } else {
-        newFolded.add(strId); // Collapse
-    }
-
+    if (newFolded.has(strId)) newFolded.delete(strId); 
+    else newFolded.add(strId); 
     set({ foldedIds: newFolded });
     get().computeLayout();
   },
@@ -219,8 +306,6 @@ const useStore = create((set, get) => ({
     get().computeLayout();
   },
 
-  // --- CRUD OPERATIONS ---
-
   addChild: async (parentId, title, priority) => {
     if (!title) return;
     try {
@@ -229,7 +314,6 @@ const useStore = create((set, get) => ({
         parent_id: parentId, 
         priority: parseInt(priority) || 1 
       });
-      // Auto expand the parent so we see the new child
       const { foldedIds } = get();
       if (foldedIds.has(parentId.toString())) {
           foldedIds.delete(parentId.toString());
@@ -262,16 +346,14 @@ const useStore = create((set, get) => ({
 
   toggleTask: async (id, currentStatus) => {
     const newStatus = !currentStatus;
-    // Optimistic update
     set(state => ({
         nodes: state.nodes.map(n => 
             n.data.id === id ? { ...n, data: { ...n.data, isCompleted: newStatus } } : n
         )
     }));
-
     try {
       await axios.patch(`${SERVER_URL}/nodes/${id}`, { is_completed: newStatus });
-      get().fetchTree(); // Re-fetch to sync
+      get().fetchTree(); 
       get().fetchLeaves();
     } catch (error) {
       console.error("Failed to toggle:", error);

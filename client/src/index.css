@@ -30,3 +30,28 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #555;
 }
+
+/* --- LIQUID WAVE ANIMATION --- */
+.liquid-wave {
+  position: absolute;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background-color: rgba(59, 130, 246, 0.2); /* Blue tint */
+  border-radius: 40%;
+  animation: wave 10s infinite linear;
+  pointer-events: none;
+}
+
+.liquid-wave.completed {
+  background-color: rgba(16, 185, 129, 0.2); /* Emerald tint */
+}
+
+@keyframes wave {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}

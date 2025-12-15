@@ -6,13 +6,13 @@ import GlobalModal from './components/GlobalModal';
 import useStore from './store/useStore';
 import MindMapNode from './components/MindMapNode';
 import TaskList from './components/TaskList'; 
+import { ArrowLeft } from 'lucide-react';
 
 const nodeTypes = { mindMap: MindMapNode };
 
 function Flow() {
   const { fetchTree, nodes, edges, onNodesChange, onEdgesChange } = useStore();
   
-  // Fetch tree data on mount. The store now handles the Dagre layout automatically.
   useEffect(() => { 
     fetchTree(); 
   }, []);
@@ -25,17 +25,14 @@ function Flow() {
       onEdgesChange={onEdgesChange}
       nodeTypes={nodeTypes}
       fitView
-      // Allow users to tweak the layout manually after auto-layout
       nodesDraggable={true} 
-      // Prevent manual wiring since the structure is logic-based (parent/child)
       nodesConnectable={false} 
     >
       <Background color="#333" gap={20} />
       <Controls />
       
-      {/* Helper Panel for the new Focus Feature */}
       <Panel position="top-left" className="bg-white/5 p-2 rounded text-xs text-gray-400 backdrop-blur-md border border-white/10">
-        Click a node to Focus Branch
+         Double-click to Deep Dive. Arrow Keys to Navigate.
       </Panel>
     </ReactFlow>
   );
@@ -44,15 +41,88 @@ function Flow() {
 export default function App() {
   const [view, setView] = useState('map');
   const [showFocus, setShowFocus] = useState(false);
+  const { 
+    hoistedNodeId, 
+    setHoistedNode, 
+    focusedNodeId, 
+    moveFocus, 
+    toggleFold, 
+    toggleTask, 
+    openModal,
+    rawNodes 
+  } = useStore();
+
+  // --- 3. KEYBOARD NAVIGATION ---
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+        // Ignore if modal is likely open (simple check, ideally check state)
+        if (document.querySelector('input:focus')) return;
+
+        switch(e.key) {
+            case 'ArrowUp': 
+                e.preventDefault();
+                moveFocus('UP'); 
+                break;
+            case 'ArrowDown': 
+                e.preventDefault();
+                moveFocus('DOWN'); 
+                break;
+            case 'ArrowLeft': 
+                e.preventDefault();
+                moveFocus('LEFT'); 
+                break;
+            case 'ArrowRight': 
+                e.preventDefault();
+                moveFocus('RIGHT'); 
+                break;
+            case 'Enter':
+                e.preventDefault();
+                if (focusedNodeId) toggleFold(focusedNodeId);
+                break;
+            case ' ': // Space
+                e.preventDefault();
+                if (focusedNodeId) {
+                    const node = rawNodes.find(n => n.id.toString() === focusedNodeId);
+                    if (node) toggleTask(node.id, node.is_completed);
+                }
+                break;
+            case 'Tab':
+                e.preventDefault();
+                if (focusedNodeId) {
+                    openModal('add', focusedNodeId, '', 1);
+                }
+                break;
+            case 'Escape':
+                if (hoistedNodeId) setHoistedNode(null);
+                break;
+            default: break;
+        }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [focusedNodeId, hoistedNodeId, rawNodes]);
+
 
   return (
     <div className="relative w-screen h-screen bg-[#171717]">
       
-      {/* Global Modal for Add/Edit/Delete actions */}
+      {/* Global Modal */}
       <GlobalModal />
 
       {/* Focus Mode Overlay */}
       {showFocus && <FocusMode onClose={() => setShowFocus(false)} />}
+
+      {/* Deep Dive Back Button */}
+      {hoistedNodeId && (
+        <button 
+            onClick={() => setHoistedNode(null)}
+            className="fixed top-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-yellow-500/20 text-yellow-500 border border-yellow-500/50 px-6 py-2 rounded-full font-bold uppercase tracking-wider text-xs hover:bg-yellow-500/30 transition-all animate-in fade-in slide-in-from-top-4"
+        >
+            <ArrowLeft size={16} />
+            Return to Main Map
+        </button>
+      )}
 
       {/* Floating Dock Navigation */}
       <div className="fixed bottom-8 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-2xl border border-white/10 bg-white/5 p-2 backdrop-blur-xl shadow-2xl transition-all hover:scale-105 hover:bg-white/10">
