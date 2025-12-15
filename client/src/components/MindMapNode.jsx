@@ -1,31 +1,40 @@
 import React, { memo } from 'react';
 import { Handle, Position } from 'reactflow';
-import { CheckCircle2, Circle, Trash2, Edit3, Plus } from 'lucide-react';
+import { CheckCircle2, Circle, Trash2, Edit3, Plus, ChevronDown } from 'lucide-react';
 import useStore from '../store/useStore';
 
 const MindMapNode = ({ data }) => {
-  const { openModal, toggleTask } = useStore();
+  const { openModal, toggleTask, toggleFold, highlightPath } = useStore();
   
   const isRoot = !data.parentId;
   const isCompleted = data.isCompleted;
+  const hasChildren = data.hasChildren;
+  const isFolded = data.isFolded;
 
   return (
-    <div className="relative group">
+    <div 
+        className="relative group"
+        onMouseEnter={() => highlightPath(data.id.toString())}
+        onMouseLeave={() => highlightPath(null)}
+    >
       <Handle type="target" position={Position.Top} className="opacity-0" />
 
+      {/* Main Node Card */}
       <div 
         className={`
           relative min-w-[240px] overflow-hidden rounded-2xl border 
           backdrop-blur-2xl transition-all duration-300
           ${isCompleted 
             ? 'border-emerald-500/20 bg-emerald-950/20 opacity-60 grayscale-[0.5]' 
-            : 'border-white/10 bg-[#1A1A1A]/80 shadow-2xl hover:border-blue-500/50 hover:shadow-blue-500/10'
+            : 'border-white/10 bg-[#1A1A1A]/80 shadow-2xl'
           }
         `}
       >
+        {/* Top Gradient Bar */}
         {!isCompleted && <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 opacity-80" />}
 
         <div className="p-5">
+            {/* Header: Priority + Actions */}
             <div className="flex justify-between items-start mb-4">
                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-widest uppercase ${
                     isCompleted ? 'bg-emerald-500/10 text-emerald-500' : 'bg-white/5 text-gray-400'
@@ -45,6 +54,7 @@ const MindMapNode = ({ data }) => {
                       <Edit3 size={14}/>
                     </button>
 
+                    {/* DELETE BUTTON */}
                     {!isRoot && (
                       <button 
                         onClick={(e) => { 
@@ -59,6 +69,7 @@ const MindMapNode = ({ data }) => {
                 </div>
             </div>
 
+            {/* Body: Checkbox + Title */}
             <div className="flex items-start gap-4">
                 <button 
                     onClick={(e) => { e.stopPropagation(); toggleTask(data.id, isCompleted); }}
@@ -70,9 +81,26 @@ const MindMapNode = ({ data }) => {
                     {data.label}
                 </div>
             </div>
+            
+            {/* Folder/Expander Button */}
+            {hasChildren && (
+                <button 
+                    onClick={(e) => {
+                        e.stopPropagation(); 
+                        toggleFold(data.id);
+                    }}
+                    className="mt-3 flex w-full justify-center items-center py-1 rounded hover:bg-white/5 transition-colors group/btn cursor-pointer"
+                >
+                   {isFolded 
+                        ? <ChevronDown size={20} className="text-gray-500 animate-bounce group-hover/btn:text-white" /> 
+                        : <ChevronDown size={20} className="text-gray-700 rotate-180 group-hover/btn:text-gray-400" />
+                   }
+                </button>
+            )}
         </div>
       </div>
 
+      {/* Add Button - Appears below node */}
       <button 
         onClick={(e) => { 
           e.stopPropagation(); 

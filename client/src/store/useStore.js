@@ -5,14 +5,13 @@ import dagre from '@dagrejs/dagre';
 
 const SERVER_URL = `${window.location.protocol}//${window.location.hostname}:5000/api`;
 
-// --- LAYOUT ENGINE CONFIG ---
-const dagreGraph = new dagre.graphlib.Graph();
-dagreGraph.setDefaultEdgeLabel(() => ({}));
-
+// --- LAYOUT ENGINE HELPER ---
 const nodeWidth = 280; 
 const nodeHeight = 140; 
 
 const getLayoutedElements = (nodes, edges, direction = 'TB') => {
+  const dagreGraph = new dagre.graphlib.Graph();
+  dagreGraph.setDefaultEdgeLabel(() => ({}));
   dagreGraph.setGraph({ rankdir: direction });
 
   nodes.forEach((node) => {
@@ -27,6 +26,9 @@ const getLayoutedElements = (nodes, edges, direction = 'TB') => {
 
   const layoutedNodes = nodes.map((node) => {
     const nodeWithPosition = dagreGraph.node(node.id);
+    // Fallback if dagre fails to position (orphan nodes)
+    if (!nodeWithPosition) return node;
+
     return {
       ...node,
       targetPosition: 'top',
@@ -40,16 +42,21 @@ const getLayoutedElements = (nodes, edges, direction = 'TB') => {
 
   return { nodes: layoutedNodes, edges };
 };
-// ----------------------------
+
+// --- STORE ---
 
 const useStore = create((set, get) => ({
   nodes: [],
   edges: [],
+  rawNodes: [], // Keep full dataset in memory
   leaves: [],
   modalState: { type: null, nodeId: null, initialValue: '', initialPriority: 1 },
+  
+  // FOLDING STATE
+  foldedIds: new Set(), // IDs of nodes that are collapsed
 
-  // UI STATE
-  focusedNodeId: null, 
+  // HIGHLIGHT STATE
+  hoveredNodeId: null, 
 
   // --- MODAL ACTIONS ---
   openModal: (type, nodeId, initialValue = '', initialPriority = 1) => 
@@ -63,41 +70,12 @@ const useStore = create((set, get) => ({
     try {
       const response = await axios.get(`${SERVER_URL}/nodes`);
       const data = response.data;
-
-      const flowNodes = data.map((node) => ({
-        id: node.id.toString(),
-        type: 'mindMap',
-        hidden: false, 
-        data: { 
-          label: node.title, 
-          priority: node.priority,
-          isCompleted: node.is_completed,
-          id: node.id,
-          parentId: node.parent_id,
-          onFocus: () => get().setFocus(node.id.toString())
-        },
-        position: { x: 0, y: 0 }, 
-      }));
-
-      const flowEdges = data
-        .filter(n => n.parent_id)
-        .map(n => ({
-          id: `e${n.parent_id}-${n.id}`,
-          source: n.parent_id.toString(),
-          target: n.id.toString(),
-          type: 'smoothstep',
-          animated: true,
-          style: { stroke: '#555' }
-        }));
-
-      // Apply initial layout
-      const layout = getLayoutedElements(flowNodes, flowEdges);
-      set({ nodes: layout.nodes, edges: layout.edges });
       
-      // If we are currently focused on a node, re-apply the focus filter
-      if (get().focusedNodeId) {
-        get().setFocus(get().focusedNodeId);
-      }
+      // Initialize foldedIds: All nodes are folded by default
+      const initialFolded = new Set(data.map(n => n.id.toString()));
+
+      set({ rawNodes: data, foldedIds: initialFolded });
+      get().computeLayout();
       
     } catch (error) {
       console.error("Failed to fetch tree:", error);
@@ -111,7 +89,137 @@ const useStore = create((set, get) => ({
     } catch (error) { console.error(error); }
   },
 
-  // --- NODE ACTIONS ---
+  // --- LAYOUT & VISIBILITY LOGIC ---
+  computeLayout: () => {
+    const { rawNodes, foldedIds, hoveredNodeId } = get();
+
+    // 1. Build Hierarchy Map
+    const nodeMap = new Map();
+    rawNodes.forEach(n => nodeMap.set(n.id.toString(), { ...n, children: [] }));
+    
+    const roots = [];
+    rawNodes.forEach(n => {
+        const strId = n.id.toString();
+        const node = nodeMap.get(strId);
+        if (n.parent_id) {
+            const parent = nodeMap.get(n.parent_id.toString());
+            if (parent) parent.children.push(node);
+        } else {
+            roots.push(node);
+        }
+    });
+
+    // 2. Determine Visibility (BFS)
+    const visibleNodes = [];
+    const visibleEdges = [];
+    const queue = [...roots];
+
+    while (queue.length > 0) {
+        const node = queue.shift();
+        const strId = node.id.toString();
+
+        // Construct ReactFlow Node
+        visibleNodes.push({
+            id: strId,
+            type: 'mindMap',
+            data: { 
+              label: node.title, 
+              priority: node.priority,
+              isCompleted: node.is_completed,
+              id: node.id,
+              parentId: node.parent_id,
+              // Pass folding state to component
+              isFolded: foldedIds.has(strId),
+              hasChildren: node.children.length > 0
+            },
+            position: { x: 0, y: 0 }, 
+        });
+
+        // Add Edges connecting to parent
+        if (node.parent_id) {
+             visibleEdges.push({
+                id: `e${node.parent_id}-${node.id}`,
+                source: node.parent_id.toString(),
+                target: strId,
+                type: 'smoothstep',
+                animated: true,
+             });
+        }
+
+        // If NOT folded, add children to queue to be processed
+        if (!foldedIds.has(strId)) {
+            queue.push(...node.children);
+        }
+    }
+
+    // 3. Calculate Layout
+    const layout = getLayoutedElements(visibleNodes, visibleEdges);
+
+    // 4. Apply Highlights (Hover Path)
+    let finalNodes = layout.nodes;
+    let finalEdges = layout.edges;
+
+    if (hoveredNodeId) {
+        // Trace ancestors
+        const ancestors = new Set();
+        let curr = nodeMap.get(hoveredNodeId);
+        while (curr) {
+            ancestors.add(curr.id.toString());
+            curr = curr.parent_id ? nodeMap.get(curr.parent_id.toString()) : null;
+        }
+
+        // Apply Styles
+        finalNodes = finalNodes.map(node => ({
+            ...node,
+            style: {
+                ...node.style,
+                opacity: ancestors.has(node.id) ? 1 : 0.3, // Dim others
+                // Border highlight removed as requested
+            }
+        }));
+
+        finalEdges = finalEdges.map(edge => ({
+            ...edge,
+            style: {
+                stroke: ancestors.has(edge.source) && ancestors.has(edge.target) ? '#3b82f6' : '#555',
+                strokeWidth: ancestors.has(edge.source) && ancestors.has(edge.target) ? 3 : 1,
+                opacity: ancestors.has(edge.source) && ancestors.has(edge.target) ? 1 : 0.2
+            },
+            zIndex: ancestors.has(edge.source) && ancestors.has(edge.target) ? 10 : 0
+        }));
+    } else {
+        // Reset styles when no hover
+        finalNodes = finalNodes.map(n => ({ ...n, style: { opacity: 1 } }));
+        finalEdges = finalEdges.map(e => ({ ...e, style: { stroke: '#555', opacity: 1 } }));
+    }
+
+    set({ nodes: finalNodes, edges: finalEdges });
+  },
+
+  // --- INTERACTION ACTIONS ---
+  
+  toggleFold: (nodeId) => {
+    const { foldedIds } = get();
+    const strId = nodeId.toString();
+    const newFolded = new Set(foldedIds);
+    
+    if (newFolded.has(strId)) {
+        newFolded.delete(strId); // Expand
+    } else {
+        newFolded.add(strId); // Collapse
+    }
+
+    set({ foldedIds: newFolded });
+    get().computeLayout();
+  },
+
+  highlightPath: (nodeId) => {
+    if (get().hoveredNodeId === nodeId) return;
+    set({ hoveredNodeId: nodeId });
+    get().computeLayout();
+  },
+
+  // --- CRUD OPERATIONS ---
 
   addChild: async (parentId, title, priority) => {
     if (!title) return;
@@ -121,25 +229,25 @@ const useStore = create((set, get) => ({
         parent_id: parentId, 
         priority: parseInt(priority) || 1 
       });
+      // Auto expand the parent so we see the new child
+      const { foldedIds } = get();
+      if (foldedIds.has(parentId.toString())) {
+          foldedIds.delete(parentId.toString());
+          set({ foldedIds: new Set(foldedIds) });
+      }
       get().fetchTree();
       get().fetchLeaves();
     } catch (error) { console.error(error); }
   },
 
   deleteNode: async (id) => {
-    // Optimistic delete
-    set({ nodes: get().nodes.filter(n => n.id !== id.toString()) });
     try {
       await axios.delete(`${SERVER_URL}/nodes/${id}`);
       get().fetchTree(); 
       get().fetchLeaves();
-    } catch (error) { 
-        console.error(error); 
-        get().fetchTree(); // Revert if failed
-    }
+    } catch (error) { console.error(error); }
   },
 
-  // Updated to support Title AND Priority
   updateNode: async (id, title, priority) => {
     if (!title) return;
     try {
@@ -154,8 +262,7 @@ const useStore = create((set, get) => ({
 
   toggleTask: async (id, currentStatus) => {
     const newStatus = !currentStatus;
-    
-    // Update Map View immediately (Optimistic)
+    // Optimistic update
     set(state => ({
         nodes: state.nodes.map(n => 
             n.data.id === id ? { ...n, data: { ...n.data, isCompleted: newStatus } } : n
@@ -164,88 +271,12 @@ const useStore = create((set, get) => ({
 
     try {
       await axios.patch(`${SERVER_URL}/nodes/${id}`, { is_completed: newStatus });
-      get().fetchTree();
+      get().fetchTree(); // Re-fetch to sync
       get().fetchLeaves();
     } catch (error) {
       console.error("Failed to toggle:", error);
       get().fetchTree();
     }
-  },
-
-  // --- VISUALIZATION LOGIC ---
-
-  setFocus: (nodeId) => {
-    const { nodes, edges } = get();
-    
-    // Toggle Off if clicking the same node
-    if (get().focusedNodeId === nodeId) {
-      set({ 
-        focusedNodeId: null, 
-        nodes: nodes.map(n => ({ 
-            ...n, 
-            hidden: false, 
-            style: { ...n.style, opacity: 1, pointerEvents: 'all' } 
-        })),
-        edges: edges.map(e => ({ 
-            ...e, 
-            hidden: false, 
-            style: { ...e.style, stroke: '#555', opacity: 1 } 
-        }))
-      });
-      return;
-    }
-
-    set({ focusedNodeId: nodeId });
-
-    // Find relatives (Ancestors + Descendants)
-    const relatives = new Set();
-    const visited = new Set();
-    
-    const traverse = (currentId, direction) => {
-        if (visited.has(currentId)) return;
-        visited.add(currentId);
-        relatives.add(currentId);
-
-        if (direction === 'both' || direction === 'up') {
-            const incoming = edges.filter(e => e.target === currentId);
-            incoming.forEach(e => traverse(e.source, 'up'));
-        }
-        if (direction === 'both' || direction === 'down') {
-            const outgoing = edges.filter(e => e.source === currentId);
-            outgoing.forEach(e => traverse(e.target, 'down'));
-        }
-    };
-
-    traverse(nodeId, 'both');
-
-    // Update Nodes: Dim non-relatives
-    const updatedNodes = nodes.map(node => {
-        const isRelative = relatives.has(node.id);
-        return {
-            ...node,
-            style: { 
-                ...node.style,
-                opacity: isRelative ? 1 : 0.1,
-                pointerEvents: isRelative ? 'all' : 'none' 
-            },
-        };
-    });
-
-    // Update Edges: Highlight path
-    const updatedEdges = edges.map(edge => {
-        const isPath = relatives.has(edge.source) && relatives.has(edge.target);
-        return {
-            ...edge,
-            style: { 
-                stroke: isPath ? '#3b82f6' : '#333',
-                strokeWidth: isPath ? 3 : 1,
-                opacity: isPath ? 1 : 0.1
-            },
-            zIndex: isPath ? 10 : 0
-        };
-    });
-
-    set({ nodes: updatedNodes, edges: updatedEdges });
   },
 
   onNodesChange: (changes) => set({ nodes: applyNodeChanges(changes, get().nodes) }),
