@@ -4,7 +4,6 @@ import { CheckCircle2, Circle, Trash2, Edit3, Plus } from 'lucide-react';
 import useStore from '../store/useStore';
 
 const MindMapNode = ({ data }) => {
-  // Destructure openModal
   const { openModal, toggleTask } = useStore();
   
   const isRoot = !data.parentId;
@@ -24,11 +23,9 @@ const MindMapNode = ({ data }) => {
           }
         `}
       >
-        {/* Decorative Top Gradient Line */}
         {!isCompleted && <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 opacity-80" />}
 
         <div className="p-5">
-            {/* Header: Priority Badge & Actions */}
             <div className="flex justify-between items-start mb-4">
                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-widest uppercase ${
                     isCompleted ? 'bg-emerald-500/10 text-emerald-500' : 'bg-white/5 text-gray-400'
@@ -36,20 +33,18 @@ const MindMapNode = ({ data }) => {
                     {isCompleted ? 'Done' : `Priority ${data.priority || 0}`}
                 </span>
                 
-                {/* Actions (Only show on hover) */}
                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    {/* RENAME BUTTON */}
+                    {/* EDIT BUTTON */}
                     <button 
                       onClick={(e) => { 
                         e.stopPropagation(); 
-                        openModal('rename', data.id, data.label); 
+                        openModal('edit', data.id, data.label, data.priority); 
                       }} 
                       className="text-gray-500 hover:text-white"
                     >
                       <Edit3 size={14}/>
                     </button>
 
-                    {/* DELETE BUTTON */}
                     {!isRoot && (
                       <button 
                         onClick={(e) => { 
@@ -64,7 +59,6 @@ const MindMapNode = ({ data }) => {
                 </div>
             </div>
 
-            {/* Content */}
             <div className="flex items-start gap-4">
                 <button 
                     onClick={(e) => { e.stopPropagation(); toggleTask(data.id, isCompleted); }}
@@ -79,11 +73,10 @@ const MindMapNode = ({ data }) => {
         </div>
       </div>
 
-      {/* ADD CHILD BUTTON */}
       <button 
         onClick={(e) => { 
           e.stopPropagation(); 
-          openModal('add', data.id); 
+          openModal('add', data.id, '', 1); 
         }}
         className="
             absolute -bottom-4 left-1/2 -translate-x-1/2 z-20 

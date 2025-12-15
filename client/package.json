@@ -8,6 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@dagrejs/dagre": "^1.1.8",
     "axios": "^1.6.0",
     "framer-motion": "^10.16.4",
     "lucide-react": "^0.292.0",

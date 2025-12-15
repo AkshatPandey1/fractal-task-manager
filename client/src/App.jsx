@@ -1,59 +1,42 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import ReactFlow, { Background, Controls, ReactFlowProvider } from 'reactflow';
+import React, { useEffect, useState } from 'react';
+import ReactFlow, { Background, Controls, ReactFlowProvider, Panel } from 'reactflow';
 import 'reactflow/dist/style.css'; 
 import FocusMode from './components/FocusMode';
-import GlobalModal from './components/GlobalModal'; // <--- NEW IMPORT
+import GlobalModal from './components/GlobalModal'; 
 import useStore from './store/useStore';
 import MindMapNode from './components/MindMapNode';
 import TaskList from './components/TaskList'; 
 
 const nodeTypes = { mindMap: MindMapNode };
 
-// --- Layout Logic (Unchanged) ---
-const getLayoutedNodes = (nodes) => {
-    if (nodes.length === 0) return [];
-    const levels = {};
-    nodes.forEach(node => {
-        let depth = 0;
-        let p = node.parentNode;
-        while(p) {
-            depth++;
-            const parent = nodes.find(n => n.id === p);
-            p = parent ? parent.parentNode : null;
-        }
-        if (!levels[depth]) levels[depth] = [];
-        levels[depth].push(node);
-    });
-    return nodes.map(node => {
-        let depth = 0;
-        let p = node.parentNode;
-        while(p) {
-            depth++;
-            const parent = nodes.find(n => n.id === p);
-            p = parent ? parent.parentNode : null;
-        }
-        const indexInLevel = levels[depth].findIndex(n => n.id === node.id);
-        const totalInLevel = levels[depth].length;
-        return { ...node, position: { x: (indexInLevel - totalInLevel / 2) * 200 + 100, y: depth * 150 } };
-    });
-};
-
 function Flow() {
   const { fetchTree, nodes, edges, onNodesChange, onEdgesChange } = useStore();
-  useEffect(() => { fetchTree(); }, []);
-  const layoutedNodes = useMemo(() => getLayoutedNodes(nodes), [nodes]);
+  
+  // Fetch tree data on mount. The store now handles the Dagre layout automatically.
+  useEffect(() => { 
+    fetchTree(); 
+  }, []);
 
   return (
     <ReactFlow
-      nodes={layoutedNodes}
+      nodes={nodes}
       edges={edges}
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
       nodeTypes={nodeTypes}
       fitView
+      // Allow users to tweak the layout manually after auto-layout
+      nodesDraggable={true} 
+      // Prevent manual wiring since the structure is logic-based (parent/child)
+      nodesConnectable={false} 
     >
       <Background color="#333" gap={20} />
       <Controls />
+      
+      {/* Helper Panel for the new Focus Feature */}
+      <Panel position="top-left" className="bg-white/5 p-2 rounded text-xs text-gray-400 backdrop-blur-md border border-white/10">
+        Click a node to Focus Branch
+      </Panel>
     </ReactFlow>
   );
 }
@@ -65,9 +48,10 @@ export default function App() {
   return (
     <div className="relative w-screen h-screen bg-[#171717]">
       
-      {/* --- NEW: RENDER MODAL --- */}
+      {/* Global Modal for Add/Edit/Delete actions */}
       <GlobalModal />
 
+      {/* Focus Mode Overlay */}
       {showFocus && <FocusMode onClose={() => setShowFocus(false)} />}
 
       {/* Floating Dock Navigation */}

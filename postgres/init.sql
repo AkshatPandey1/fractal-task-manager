@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS nodes (
     title TEXT NOT NULL,
     description TEXT,
     is_completed BOOLEAN DEFAULT FALSE,
-    priority INTEGER DEFAULT 0, -- Leaves = 1-10, Parents = Sum of children
+    priority INTEGER DEFAULT 1, -- Changed default to 1 so tasks have value by default
     deadline TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -14,29 +14,9 @@ CREATE TABLE IF NOT EXISTS nodes (
 -- 2. Create Index for faster recursive lookups
 CREATE INDEX idx_parent_id ON nodes(parent_id);
 
--- 3. LOGIC: Priority Bubble Up Trigger
--- When a child changes priority, sum all siblings and update the parent.
-CREATE OR REPLACE FUNCTION update_parent_priority() 
-RETURNS TRIGGER AS $$
-BEGIN
-    IF NEW.parent_id IS NOT NULL THEN
-        UPDATE nodes 
-        SET priority = (
-            SELECT COALESCE(SUM(priority), 0) 
-            FROM nodes 
-            WHERE parent_id = NEW.parent_id AND is_completed = FALSE
-        )
-        WHERE id = NEW.parent_id;
-    END IF;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trigger_priority_bubble
-AFTER INSERT OR UPDATE OF priority, is_completed, parent_id ON nodes
-FOR EACH ROW
-EXECUTE FUNCTION update_parent_priority();
-
+-- 3. [REMOVED] Priority Bubble Up Logic
+-- We removed the trigger that overwrites parent priority with SUM(children).
+-- Now, the priority you set in the UI is the priority that stays in the DB.
 
 -- 4. LOGIC: Completion Bubble Up Trigger
 -- When a child is completed, check if all siblings are done. If so, complete parent.
